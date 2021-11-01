@@ -1,0 +1,273 @@
+---
+title: "607_HW10_NCollin"
+author: "Noah Collin"
+date: "10/31/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Homework 10
+
+The following code was copied from TidyTextMining.com, originally posted here:
+https://www.tidytextmining.com/sentiment.html
+
+
+```{r code1}
+#install.packages("tidytext")
+#install.packages("textdata")
+
+library(tidytext)
+library(stringr)
+
+```
+
+The following sentiments are from here: 
+AFINN : https://www2.imm.dtu.dk/pubdb/pubs/6010-full.html
+BING: https://www.cs.uic.edu/~liub/FBS/sentiment-analysis.html
+NRC : https://saifmohammad.com/WebPages/NRC-Emotion-Lexicon.htm
+```{r sentiments}
+afinn <-  (get_sentiments("afinn"))
+bing <- get_sentiments("bing")
+nrc <- get_sentiments("nrc")
+```
+
+Source for the following code:
+https://www.tidytextmining.com/sentiment.html
+```{r fromAssignment2}
+library(janeaustenr)
+library(dplyr)
+library(stringr)
+
+tidy_books <- austen_books() %>%
+  group_by(book) %>%
+  mutate(
+    linenumber = row_number(),
+    chapter = cumsum(str_detect(text, 
+                                regex("^chapter [\\divxlc]", 
+                                      ignore_case = TRUE)))) %>%
+  ungroup() %>%
+  unnest_tokens(word, text)
+
+```
+
+```{r fromReading3}
+nrc_joy <- get_sentiments("nrc") %>% 
+  filter(sentiment == "joy")
+
+tidy_books %>%
+  filter(book == "Emma") %>%
+  inner_join(nrc_joy) %>%
+  count(word, sort = TRUE)
+
+```
+
+```{r fromReading4}
+library(tidyr)
+
+jane_austen_sentiment <- tidy_books %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(book, index = linenumber %/% 80, sentiment) %>%
+  pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+
+```
+
+```{r fromReading5}
+library(ggplot2)
+
+ggplot(jane_austen_sentiment, aes(index, sentiment, fill = book)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~book, ncol = 2, scales = "free_x")
+```
+
+```{r fromReading6}
+pride_prejudice <- tidy_books %>% 
+  filter(book == "Pride & Prejudice")
+pride_prejudice
+```
+
+```{r fromReading7}
+afinn <- pride_prejudice %>% 
+  inner_join(get_sentiments("afinn")) %>% 
+  group_by(index = linenumber %/% 80) %>% 
+  summarise(sentiment = sum(value)) %>% 
+  mutate(method = "AFINN")
+
+bing_and_nrc <- bind_rows(
+  pride_prejudice %>% 
+    inner_join(get_sentiments("bing")) %>%
+    mutate(method = "Bing et al."),
+  pride_prejudice %>% 
+    inner_join(get_sentiments("nrc") %>% 
+                 filter(sentiment %in% c("positive", 
+                                         "negative"))
+    ) %>%
+    mutate(method = "NRC")) %>%
+  count(method, index = linenumber %/% 80, sentiment) %>%
+  pivot_wider(names_from = sentiment,
+              values_from = n,
+              values_fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+
+```
+
+```{r fromReading8}
+bind_rows(afinn, 
+          bing_and_nrc) %>%
+  ggplot(aes(index, sentiment, fill = method)) +
+  geom_col(show.legend = F) +
+  facet_wrap(~method, ncol = 1, scales = "free_y")
+```
+
+```{r fromReading9}
+get_sentiments("nrc") %>% 
+  filter(sentiment %in% c("positive", "negative")) %>% 
+  count(sentiment)
+```
+
+```{r fromReading10}
+get_sentiments("bing") %>% 
+  count(sentiment)
+
+```
+
+
+```{r fromReading11}
+bing_word_counts <- tidy_books %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  ungroup()
+
+bing_word_counts
+```
+
+
+```{r fromReading11b}
+bing_word_counts %>%
+  group_by(sentiment) %>%
+  slice_max(n, n = 10) %>% 
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(n, word, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(x = "Contribution to sentiment",
+       y = NULL)
+```
+
+```{r fromReading12}
+custom_stop_words <- bind_rows(tibble(word = c("miss"),  
+                                      lexicon = c("custom")), 
+                               stop_words)
+
+custom_stop_words
+```
+
+```{r fromReading13}
+#install.packages("wordcloud")
+library(wordcloud)
+
+tidy_books %>%
+  anti_join(stop_words) %>%
+  count(word) %>%
+  with(wordcloud(word, n, max.words = 100))
+```
+
+```{r fromReading14}
+library(reshape2)
+
+tidy_books %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("gray20", "gray80"),
+                   max.words = 100)
+
+```
+
+```{r fromReading15}
+p_and_p_sentences <- tibble(text = prideprejudice) %>% 
+  unnest_tokens(sentence, text, token = "sentences")
+
+p_and_p_sentences$sentence[2]
+```
+
+```{r fromReading16}
+austen_chapters <- austen_books() %>%
+  group_by(book) %>%
+  unnest_tokens(chapter, text, token = "regex", 
+                pattern = "Chapter|CHAPTER [\\dIVXLC]") %>%
+  ungroup()
+
+austen_chapters %>% 
+  group_by(book) %>% 
+  summarise(chapters = n())
+
+```
+
+
+```{r fromReading16b}
+bingnegative <- get_sentiments("bing") %>% 
+  filter(sentiment == "negative")
+
+wordcounts <- tidy_books %>%
+  group_by(book, chapter) %>%
+  summarize(words = n())
+
+tidy_books %>%
+  semi_join(bingnegative) %>%
+  group_by(book, chapter) %>%
+  summarize(negativewords = n()) %>%
+  left_join(wordcounts, by = c("book", "chapter")) %>%
+  mutate(ratio = negativewords/words) %>%
+  filter(chapter != 0) %>%
+  slice_max(ratio, n = 1) %>% 
+  ungroup()
+
+```
+From https://www.tidytextmining.com/sentiment.html: 
+"These are the chapters with the most sad words in each book, normalized for number of words in the chapter. What is happening in these chapters? In Chapter 43 of Sense and Sensibility Marianne is seriously ill, near death, and in Chapter 34 of Pride and Prejudice Mr. Darcy proposes for the first time (so badly!). Chapter 46 of Mansfield Park is almost the end, when everyone learns of Henry’s scandalous adultery, Chapter 15 of Emma is when horrifying Mr. Elton proposes, and in Chapter 21 of Northanger Abbey Catherine is deep in her Gothic faux fantasy of murder, etc. Chapter 4 of Persuasion is when the reader gets the full flashback of Anne refusing Captain Wentworth and how sad she was and what a terrible mistake she realized it to be."
+
+## Assignment
+
+These bodies of text are from the Project Gutenberg.  The following texts are downloaded and cited below.
+
+The "physics" assignment line on line number 249 is from https://www.tidytextmining.com/tfidf.html, chapter 3 of the book.
+
+Discourse on Floating Bodies by Galileo Galilei: https://www.gutenberg.org/ebooks/37729
+Treatise on Light by Christiaan Huygens: http://www.gutenberg.org/ebooks/14725
+Experiments with Alternate Currents of High Potential and High Frequency by Nikola Tesla: http://www.gutenberg.org/ebooks/13476
+Relativity: The Special and General Theory by Albert Einstein: http://www.gutenberg.org/ebooks/30155
+
+
+```{r assignment1}
+#install.packages("gutenbergr")
+library(gutenbergr)
+physics <- gutenberg_download(c(37729, 14725, 13476, 30155), 
+                              meta_fields = "author")
+
+```
+
+```{r syuzhet}
+#install.packages("syuzhet")
+library(syuzhet)
+```
+
+```{r usingSyuzhet}
+Tesla <- physics %>% filter(author == "Tesla, Nikola")
+syuzhet_Tesla <- get_nrc_sentiment(toString(unlist(Tesla$text)))
+(syuzhet_Tesla)
+```
+
+```{r polarity}
+Galileo <-  physics %>% filter(author == "Galilei, Galileo")
+Galileo_text <- unlist( Galileo$text)
+Galileo_text <- toString(Galileo_text)
+Galileo_scores <- get_nrc_sentiment(Galileo_text)
+
+Galileo_scores
+```
+
